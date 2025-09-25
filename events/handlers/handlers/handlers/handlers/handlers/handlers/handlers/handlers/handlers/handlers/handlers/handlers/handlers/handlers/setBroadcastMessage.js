@@ -1,0 +1,91 @@
+const { 
+    Events,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
+    ActionRowBuilder,
+    EmbedBuilder
+} = require("discord.js");
+const { Database } = require("st.db");
+
+const db = new Database("/Json-db/Bots/BroadcastDB");
+
+module.exports = (client2) => {
+    client2.on(Events.InteractionCreate, async (interaction) => {
+        // زر لتحديد رسالة البرودكاست
+        if (interaction.isButton()) {
+            if (interaction.customId === "broadcast_message_button") {
+                try {
+                    const modal = new ModalBuilder()
+                        .setCustomId(`broadcast_message_modal`)
+                        .setTitle(`تحديد رسالة البرودكاست`);
+
+                    const messageInput = new TextInputBuilder()
+                        .setCustomId('the_message')
+                        .setLabel(`الرسالة`)
+                        .setStyle(TextInputStyle.Paragraph)
+                        .setMinLength(1)
+                        .setMaxLength(4000);
+
+                    const firstActionRow = new ActionRowBuilder().addComponents(messageInput);
+                    modal.addComponents(firstActionRow);
+
+                    return await interaction.showModal(modal);
+                } catch (error) {
+                    return interaction.reply({ content: `خطأ: ${error.message}`, ephemeral: true });
+                }
+            }
+        }
+
+        // عند إرسال المودال
+        if (interaction.isModalSubmit()) {
+            if (interaction.customId === "broadcast_message_modal") {
+                await interaction.deferReply({ ephemeral: false });
+
+                const themessage = interaction.fields.getTextInputValue(`the_message`);
+                await db.set(`broadcast_msg_${interaction.guild.id}`, themessage);
+
+                const broadcast_msg = db.get(`broadcast_msg_${interaction.guild.id}`) ?? themessage;
+                const msgid = db.get(`msgid_${interaction.guild.id}`);
+
+                let tokens = db.get(`tokens_${interaction.guild.id}`);
+                if (!tokens) {
+                    await db.set(`tokens_${interaction.guild.id}`, []);
+                    tokens = [];
+                }
+
+                // تحديث رسالة التحكم لو موجودة
+                if (msgid) {
+                    try {
+                        const msg = await interaction.channel.messages.fetch(msgid);
+                        const embed2 = new EmbedBuilder()
+                            .setTitle(`**التحكم في البرودكاست**`)
+                            .addFields(
+                                {
+                                    name: `**عدد البوتات المسجلة حاليا**`,
+                                    value: `**\`\`\`${tokens.length} من البوتات\`\`\`**`,
+                                    inline: false
+                                },
+                                {
+                                    name: `**رسالة البرودكاست الحالية**`,
+                                    value: `**\`\`\`${broadcast_msg}\`\`\`**`,
+                                    inline: false
+                                }
+                            )
+                            .setDescription(`**يمكنك التحكم في البوت عن طريق الأزرار**`)
+                            .setColor('Aqua')
+                            .setFooter({ text: interaction.user.username, iconURL: interaction.user.displayAvatarURL({ dynamic: true }) })
+                            .setAuthor({ name: interaction.guild.name, iconURL: interaction.guild.iconURL({ dynamic: true }) })
+                            .setTimestamp();
+
+                        await msg.edit({ embeds: [embed2] });
+                    } catch (err) {
+                        console.error(`خطأ في تحديث الرسالة: ${err.message}`);
+                    }
+                }
+
+                return interaction.editReply({ content: `**تم تحديد الرسالة بنجاح ✅**` });
+            }
+        }
+    });
+};
